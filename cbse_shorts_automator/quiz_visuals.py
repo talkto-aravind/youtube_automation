@@ -28,25 +28,36 @@ def filter_and_trim_clips(clips, limit):
         return clips
         
     valid_clips = []
-    for clip in clips:
+    
+    print(f"    ✂️ TRIMMING DIAGNOSTIC (Target Limit: {limit}s):")
+    
+    for i, clip in enumerate(clips):
+        
+        # Determine Clip Name for easier debugging
+        clip_name = f"Clip {i}: {type(clip).__name__}"
+        if hasattr(clip, 'text'): clip_name += f" ('{clip.text[:15]}...')"
+        
         # Safety check for missing start attribute
         if not hasattr(clip, 'start') or clip.start is None:
             clip.start = 0
             
+        current_dur = clip.duration if clip.duration is not None else (limit * 2)
+            
         # 1. Drop if starts after limit
         if clip.start >= limit:
+            print(f"       DROPPED: {clip_name} (Starts at {clip.start:.2f}s > Limit)")
             continue
             
         # 2. Trim if ends after limit
-        # Note: clip.duration might be None for some infinite clips, handle gracefully
-        current_dur = clip.duration if clip.duration else (limit - clip.start)
-        
         if clip.start + current_dur > limit:
             new_dur = limit - clip.start
-            # set_duration works for both TextClip (static) and VideoFileClip (cuts tail)
+            print(f"       TRIMMED: {clip_name} (Dur: {current_dur:.2f}s -> {new_dur:.2f}s)")
             clip = clip.set_duration(new_dur)
+        else:
+            print(f"       KEPT: {clip_name} (Dur: {current_dur:.2f}s)")
             
         valid_clips.append(clip)
+        #print(f" valid_clips.duration= {valid_clips.duration})")
     
     return valid_clips
 

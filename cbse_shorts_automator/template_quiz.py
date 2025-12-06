@@ -16,6 +16,8 @@ from voice_manager import VoiceManager
 from karaoke_manager import KaraokeManager
 from video_processor import VideoProcessor
 from sfx_manager import SFXManager  # <--- NEW IMPORT
+# IMPORT THE NEW MODULE
+import quiz_visuals
 
 WIDTH = 1080
 HEIGHT = 1920
@@ -100,128 +102,42 @@ class QuizTemplate:
         OUTRO_DURATION = 4.0
         total_dur = t_outro + OUTRO_DURATION
         
-        # 3. Visuals
-        print(f"   🧠 AI Watching video to find relevant clips ({int(total_dur)}s)...")
-        src_vid = video_proc.prepare_video_for_short(video_path, total_dur, script=script, width=WIDTH)
-        src_vid = src_vid.set_position(('center', 0))
-        
-        bg = self.engine.create_background(config.get('theme'), total_dur, video_clip=src_vid)
-        clips = [bg, src_vid]
-        
-        def force_rgb(clip):
-            try:
-                if hasattr(clip, 'img') and clip.img is not None and clip.img.ndim == 2:
-                    return clip.fx(vfx.to_RGB)
-            except: pass
-            return clip
+        # --- PROPOSED FIX: INJECT RENDER LIMIT HERE ---
+        render_limit = config.get('test_render_limit')
+        if render_limit and isinstance(render_limit, (int, float)) and render_limit > 0:
+            if render_limit < total_dur:
+                print(f"    ✂️ LOGIC OVERRIDE: Clamping total duration to {render_limit}s.")
+                total_dur = render_limit
+        # ---------------------------------------------
 
-        CARD_START_Y = 750 
-        
-        # 4. Text Overlays
-        # Watch Till End
-        hook_box = theme['highlight']
-        hook_txt = self.engine.get_contrast_color(hook_box)
-        
-        hook_clip = TextClip("🔥 WATCH TILL END 🔥", fontsize=45, color=hook_txt, bg_color=hook_box, font='Arial-Bold', method='label', size=(WIDTH, 110))
-        hook_clip = hook_clip.set_position(('center', CARD_START_Y)).set_start(0).set_duration(2)
-        clips.append(force_rgb(hook_clip))
-        
-        # Question
-        QUESTION_Y = CARD_START_Y + 130 
-        q_clip = self.engine.create_text_clip(script['question_visual'], fontsize=55, color=theme['highlight'], bold=True, wrap_width=25, align='North', stroke_color='black', stroke_width=2)
-        q_clip = q_clip.set_position(('center', QUESTION_Y)).set_start(t_q).set_duration(total_dur - t_q)
-        clips.append(force_rgb(q_clip))
-        
-        # Options
-        OPT_START_Y = QUESTION_Y + 350
-        GAP = 110
-        opt_bg = theme['bg_color']
-        
-        if isinstance(opt_bg, str):
-             if opt_bg.startswith('#'):
-                opt_bg = opt_bg.lstrip('#')
-                opt_bg = tuple(int(opt_bg[i:i+2], 16) for i in (0, 2, 4))
-        
-        options = [(f"A) {script['opt_a_visual']}", t_a), (f"B) {script['opt_b_visual']}", t_b), 
-                   (f"C) {script['opt_c_visual']}", t_c), (f"D) {script['opt_d_visual']}", t_d)]
-        
-        for i, (txt, t) in enumerate(options):
-            o_clip = self.engine.create_text_clip(txt, fontsize=45, color='white', bg_color=opt_bg, wrap_width=30, align='West')
-            o_clip = o_clip.set_position(('center', OPT_START_Y + GAP * i)).set_start(t).set_duration(total_dur - t)
-            clips.append(force_rgb(o_clip))
 
-        # Timer
-        timer_base_y = OPT_START_Y + GAP * 4 + 30
-        timer_bar_y = timer_base_y + 160
-        bar_color = theme['correct']
-        if isinstance(bar_color, str) and bar_color.startswith('#'):
-             bar_color = tuple(int(bar_color.lstrip('#')[i:i+2], 16) for i in (0, 2, 4))
-             
-        segments = 10
-        seg_w = WIDTH // segments
-        for i in range(segments):
-            seg = ColorClip(size=(seg_w - 2, 40), color=bar_color).set_position((i * seg_w, timer_bar_y))
-            dt = t_think + (THINK_TIME * (i + 1) / segments)
-            seg = seg.set_start(t_think).set_end(dt)
-            clips.append(seg) 
+       # Package timings for the visual module
+        timings = {
+            't_hook': t_hook,
+            't_q': t_q,
+            't_a': t_a,
+            't_b': t_b,
+            't_c': t_c,
+            't_d': t_d,
+            't_think': t_think,
+            't_ans': t_ans,
+            't_cta': t_cta,
+            't_outro': t_outro,
+            'expl_duration': aud_expl.duration,
+            'cta_duration': aud_cta.duration
+        }
 
-        for i in range(int(THINK_TIME)):
-            num = int(THINK_TIME) - i
-            n_clip = TextClip(str(num), fontsize=140, color='white', font='Arial-Bold', stroke_color='black', stroke_width=5)
-            n_clip = n_clip.set_position(('center', timer_base_y)).set_start(t_think + i).set_duration(1)
-            clips.append(force_rgb(n_clip))
-        
-        # Answer
-        ans_bg = theme['correct']
-        ans_txt = self.engine.get_contrast_color(ans_bg)
-        
-        # FIX: Stroke logic for green backgrounds
-        stroke_col = 'black' if ans_txt == 'white' else None
-        stroke_wid = 3 if ans_txt == 'white' else 0
-
-        # Create the visual summary text (e.g., "✅ A: H₂O")
-        # Fallback to spoken text if visual is missing, but visual is preferred
-        visual_content = script.get('explanation_visual', script.get('explanation_spoken', ''))
-        visual_display = f"✅ {script['correct_opt']}: {visual_content}"
-        
-        summary_clip = self.engine.create_text_clip(
-            visual_display, 
-            fontsize=50, 
-            color=ans_txt, 
-            bg_color=ans_bg, 
-            stroke_color=stroke_col, # Readability Fix
-            stroke_width=stroke_wid,
-            bold=True, 
-            wrap_width=25, 
-            align='center'
+        # 3. VISUAL COMPOSITION (DELEGATED)
+        # We pass the engine (self.engine), video_proc, and data to the new module
+        clips = quiz_visuals.build_quiz_visuals(
+            engine=self.engine,
+            video_proc=video_proc,
+            video_path=video_path,
+            script=script,
+            timings=timings,
+            total_dur=total_dur,
+            config=config
         )
-        
-        # Position: Replaces the Options area. 
-        # Duration: Matches exactly the length of the spoken explanation audio.
-        summary_clip = summary_clip.set_position(('center', OPT_START_Y)).set_start(t_ans).set_duration(aud_expl.duration)
-        clips.append(force_rgb(summary_clip))
-
-        # CTA - UPGRADE (Bigger, Moved Up, Highlight Color)
-        cta_bg = theme['highlight']
-        cta_txt_color = 'black' # High contrast
-        cta_display = f"🚀 {script['cta_spoken']}"
-        cta_duration = aud_cta.duration # CHANGED: Duration now matches CTA audio length
-        
-        clips.append(self.engine.create_text_clip(
-            cta_display, 
-            fontsize=65, 
-            color=cta_txt_color, 
-            bg_color=cta_bg, 
-            bold=True, 
-            wrap_width=20
-        ).set_position(('center', HEIGHT - 350)).set_start(t_cta).set_duration(cta_duration)) # CHANGED: Start time is t_cta
-
-        # Outro
-        outro = self.engine.create_outro(
-            duration=OUTRO_DURATION, 
-            cta_text="SUBSCRIBE FOR MORE!"
-        ).set_start(t_outro) # CHANGED: Start time is t_outro
-        clips.append(outro)
 
         # Audio
         # === NEW SFX IMPLEMENTATION ===
@@ -250,8 +166,12 @@ class QuizTemplate:
         full_audio_stack = audio_list + sfx_clips
         
         final_audio = self.engine.add_background_music(CompositeAudioClip(full_audio_stack), total_dur)
-        
-        final_raw = CompositeVideoClip(clips, size=(WIDTH, HEIGHT)).set_audio(final_audio)
+
+        final_video=CompositeVideoClip(clips, size=(WIDTH, HEIGHT))
+        #print(f"The duration of the final_video video is: {final_video.duration} seconds")
+        final_raw = final_video.set_audio(final_audio.subclip(0, final_video.duration))
+        #final_raw = final_video
+        #print(f"The duration of the composite video is: {final_raw.duration} seconds")
         
         try:
             self.engine.render_with_effects(final_raw, script, output_path)
