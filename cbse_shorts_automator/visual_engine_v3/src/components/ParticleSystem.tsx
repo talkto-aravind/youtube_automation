@@ -1,6 +1,7 @@
 import React, { useRef } from 'react';
 import { useFrame } from '@react-three/fiber';
 import { Group } from 'three';
+import { useTexture } from '@react-three/drei';
 import { Cloud, Sparkles, Stars } from '@react-three/drei';
 import { staticFile } from 'remotion';
 
@@ -11,6 +12,8 @@ interface ParticleSystemProps {
 
 export const ParticleSystem: React.FC<ParticleSystemProps> = ({ variant, color }) => {
     const ref = useRef<Group>(null);
+
+    const cloudTexture = useTexture(staticFile('/assets/cloud.png'));
 
     useFrame(() => {
         if (ref.current) {
@@ -27,11 +30,9 @@ export const ParticleSystem: React.FC<ParticleSystemProps> = ({ variant, color }
                     <Stars radius={100} depth={50} count={5000} factor={4} saturation={0} fade speed={1} />
                     {/* LOCAL TEXTURE LOAD */}
                     <Cloud 
-                        texture={staticFile('/assets/cloud.png')} 
                         opacity={0.2} 
                         speed={0.4} 
-                        width={10} 
-                        depth={1.5} 
+                        bounds={[10, 10, 10]} 
                         segments={20} 
                         color={color} 
                     />

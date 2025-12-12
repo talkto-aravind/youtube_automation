@@ -23,7 +23,7 @@ export const NanoText: React.FC<NanoTextProps> = ({
     
     const finalFontUrl = fontUrl 
         ? staticFile(fontUrl) 
-        : staticFile('/assets/font.woff2');
+        : staticFile('/assets/font.woff');
 
     return (
         <Text
